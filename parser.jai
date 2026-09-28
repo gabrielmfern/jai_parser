@@ -1889,21 +1889,19 @@ parse_procedure_returns :: (parser: *Parser, parent: *Node) -> [..]*Return_Value
     return returns, starts_with_bracket;
 }
 
+parse_parameter_list :: (parser: *Parser, parent: *Node) -> []*Node {
+    saved_inside_proc_args := parser.inside_proc_args;
+    parser.inside_proc_args = true;
+    parameters := delimited(parser, #char "(", #char ")", #char ",", parent);
+    parser.inside_proc_args = saved_inside_proc_args;
+    return parameters;
+}
+
 parse_procedure :: (parser: *Parser, force_procedure := false) -> *Node {
     header_location: Node.Location;
     set_start_location(*header_location, peek_token(parser.lexer));
 
-    // @TODO: This is kinda hack... Maybe do this in some other better way!
-    inside_proc_args_was_already_set := parser.inside_proc_args;
-    if !inside_proc_args_was_already_set {
-        parser.inside_proc_args = true;
-    }
-
-    members := delimited(parser, #char "(", #char ")", #char ",", *DUMMY_PARENT_NODE); // @TODO: Parent hack!?
-
-    if !inside_proc_args_was_already_set {
-        parser.inside_proc_args = false;
-    }
+    members := parse_parameter_list(parser, *DUMMY_PARENT_NODE); // @TODO: Parent hack!?
 
     // Probably @InComplete
     is_procedure_args :: (kind: Node.Kind) -> bool {
@@ -2082,7 +2080,7 @@ parse_struct :: (parser: *Parser) -> *Struct {
     eat_token(parser.lexer, .KEYWORD_STRUCT);
 
     if is_token(parser.lexer, #char "(") {
-        _struct.polymorphic_arguments = delimited(parser, #char "(", #char ")", #char ",", _struct);
+        _struct.polymorphic_arguments = parse_parameter_list(parser, _struct);
     }
 
     parse_struct_directive :: (parser: *Parser, _struct: *Struct) {
@@ -2155,7 +2153,7 @@ parse_union :: (parser: *Parser) -> *Union {
     eat_token(parser.lexer, .KEYWORD_UNION);
 
     if is_token(parser.lexer, #char "(") {
-        _union.polymorphic_arguments = delimited(parser, #char "(", #char ")", #char ",", _union);
+        _union.polymorphic_arguments = parse_parameter_list(parser, _union);
     }
 
     notes: [..] *Note;
@@ -2311,7 +2309,10 @@ parse_block :: (parser: *Parser, call_node_visit := true, no_aoc := false) -> *B
     block := New(Block);
     block.no_aoc = no_aoc;
     set_start_location(block, peek_token(parser.lexer));
+    saved_inside_proc_args := parser.inside_proc_args;
+    parser.inside_proc_args = false;
     block.members = delimited(parser, #char "{", #char "}", parent=block);
+    parser.inside_proc_args = saved_inside_proc_args;
     set_end_location(block, peek_token(parser.lexer, -1));
 
     if call_node_visit parser.node_visit(block, parser.user_data);
